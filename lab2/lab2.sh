@@ -39,5 +39,6 @@ git add src/swap/swap.c src/revert_string/revert_string.c lab2.sh
 git status
 git commit -m "feat: added lab2 script"
 echo -e "\nпуш будэ!!!"
+git push origin master
 
 echo -e "\nспс за внимание!"
