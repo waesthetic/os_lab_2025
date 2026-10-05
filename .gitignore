@@ -5,3 +5,7 @@ lab1/mytext.txt
 lab1/with_cake.txt
 .DS_Store
 lab2/build/
+lab3/src/*.o
+lab3/src/sequential_min_max
+lab3/src/parallel_min_max
+lab3/src/process_min_max
