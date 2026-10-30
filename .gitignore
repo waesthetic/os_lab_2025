@@ -15,3 +15,7 @@ lab4/src/process_memory
 lab4/src/zombie
 lab4/src/psum
 lab4/src/*.a
+lab5/src/mutex_without
+lab5/src/mutex_with
+lab5/src/factorial
+lab5/src/deadlock
