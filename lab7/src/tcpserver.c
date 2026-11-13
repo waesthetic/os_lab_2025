@@ -7,18 +7,33 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define SERV_PORT 10050
-#define BUFSIZE 100
-#define SADDR struct sockaddr
-
-int main() {
+int main(int argc, char *argv[]) {
   const size_t kSize = sizeof(struct sockaddr_in);
 
   int lfd, cfd;
   int nread;
-  char buf[BUFSIZE];
   struct sockaddr_in servaddr;
   struct sockaddr_in cliaddr;
+
+  if (argc != 3) {
+    printf("Usage: %s <port> <buffer_size>\n", argv[0]);
+    return 1;
+  }
+
+  int port = atoi(argv[1]);
+  int buffer_size = atoi(argv[2]);
+
+  if (port < 1 || port > 65535) {
+    printf("Port must be between 1 and 65535\n");
+    return 1;
+  }
+
+  if (buffer_size <= 0) {
+    printf("Buffer size must be positive\n");
+    return 1;
+  }
+
+  char buf[buffer_size];
 
   if ((lfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
     perror("socket");
@@ -28,9 +43,9 @@ int main() {
   memset(&servaddr, 0, kSize);
   servaddr.sin_family = AF_INET;
   servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-  servaddr.sin_port = htons(SERV_PORT);
+  servaddr.sin_port = htons(port);
 
-  if (bind(lfd, (SADDR *)&servaddr, kSize) < 0) {
+  if (bind(lfd, (struct sockaddr *)&servaddr, kSize) < 0) {
     perror("bind");
     exit(1);
   }
@@ -41,15 +56,15 @@ int main() {
   }
 
   while (1) {
-    unsigned int clilen = kSize;
+    socklen_t clilen = sizeof(cliaddr);
 
-    if ((cfd = accept(lfd, (SADDR *)&cliaddr, &clilen)) < 0) {
+    if ((cfd = accept(lfd, (struct sockaddr *)&cliaddr, &clilen)) < 0) {
       perror("accept");
       exit(1);
     }
     printf("connection established\n");
 
-    while ((nread = read(cfd, buf, BUFSIZE)) > 0) {
+    while ((nread = read(cfd, buf, buffer_size)) > 0) {
       write(1, &buf, nread);
     }
 

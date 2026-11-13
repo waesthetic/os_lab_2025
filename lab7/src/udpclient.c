@@ -9,27 +9,36 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define SERV_PORT 20001
-#define BUFSIZE 1024
-#define SADDR struct sockaddr
-#define SLEN sizeof(struct sockaddr_in)
-
 int main(int argc, char **argv) {
   int sockfd, n;
-  char sendline[BUFSIZE], recvline[BUFSIZE + 1];
   struct sockaddr_in servaddr;
-  struct sockaddr_in cliaddr;
 
-  if (argc != 2) {
-    printf("usage: client <IPaddress of server>\n");
-    exit(1);
+  if (argc != 4) {
+    printf("Usage: %s <ip> <port> <buffer_size>\n", argv[0]);
+    return 1;
   }
+
+  int port = atoi(argv[2]);
+  int buffer_size = atoi(argv[3]);
+
+  if (port < 1 || port > 65535) {
+    printf("Port must be between 1 and 65535\n");
+    return 1;
+  }
+
+  if (buffer_size <= 0) {
+    printf("Buffer size must be positive\n");
+    return 1;
+  }
+
+  char sendline[buffer_size];
+  char recvline[buffer_size + 1];
 
   memset(&servaddr, 0, sizeof(servaddr));
   servaddr.sin_family = AF_INET;
-  servaddr.sin_port = htons(SERV_PORT);
+  servaddr.sin_port = htons(port);
 
-  if (inet_pton(AF_INET, argv[1], &servaddr.sin_addr) < 0) {
+  if (inet_pton(AF_INET, argv[1], &servaddr.sin_addr) <= 0) {
     perror("inet_pton problem");
     exit(1);
   }
@@ -40,16 +49,20 @@ int main(int argc, char **argv) {
 
   write(1, "Enter string\n", 13);
 
-  while ((n = read(0, sendline, BUFSIZE)) > 0) {
-    if (sendto(sockfd, sendline, n, 0, (SADDR *)&servaddr, SLEN) == -1) {
+  while ((n = read(0, sendline, buffer_size)) > 0) {
+    if (sendto(sockfd, sendline, n, 0, (struct sockaddr *)&servaddr, sizeof(servaddr)) == -1) {
       perror("sendto problem");
       exit(1);
     }
 
-    if (recvfrom(sockfd, recvline, BUFSIZE, 0, NULL, NULL) == -1) {
+    n = recvfrom(sockfd, recvline, buffer_size, 0, NULL, NULL);
+
+    if (n == -1) {
       perror("recvfrom problem");
       exit(1);
     }
+
+    recvline[n] = '\0';
 
     printf("REPLY FROM SERVER= %s\n", recvline);
   }

@@ -23,3 +23,7 @@ lab6/src/client
 lab6/src/server
 lab6/src/*.o
 lab6/src/*.a
+lab7/src/tcpclient
+lab7/src/tcpserver
+lab7/src/udpclient
+lab7/src/udpserver
