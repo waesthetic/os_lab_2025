@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
+#include <stdint.h>
 #include <getopt.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
@@ -12,37 +12,31 @@
 #include <sys/types.h>
 
 #include "pthread.h"
+#include "modulo.h"
 
 struct FactorialArgs {
   uint64_t begin;
   uint64_t end;
   uint64_t mod;
+  uint64_t result;
 };
 
-uint64_t MultModulo(uint64_t a, uint64_t b, uint64_t mod) {
-  uint64_t result = 0;
-  a = a % mod;
-  while (b > 0) {
-    if (b % 2 == 1)
-      result = (result + a) % mod;
-    a = (a * 2) % mod;
-    b /= 2;
-  }
-
-  return result % mod;
-}
-
 uint64_t Factorial(const struct FactorialArgs *args) {
-  uint64_t ans = 1;
-
-  // TODO: your code here
+  uint64_t ans = 1 % args->mod;
+  
+  for (uint64_t i = args->begin; i <= args->end; i++) {
+    ans = MultModulo(ans, i, args->mod);
+  }
 
   return ans;
 }
 
 void *ThreadFactorial(void *args) {
-  struct FactorialArgs *fargs = (struct FactorialArgs *)args;
-  return (void *)(uint64_t *)Factorial(fargs);
+  struct FactorialArgs *fargs = args;
+
+  fargs->result = Factorial(fargs);
+
+  return NULL;
 }
 
 int main(int argc, char **argv) {
@@ -50,8 +44,6 @@ int main(int argc, char **argv) {
   int port = -1;
 
   while (true) {
-    int current_optind = optind ? optind : 1;
-
     static struct option options[] = {{"port", required_argument, 0, 0},
                                       {"tnum", required_argument, 0, 0},
                                       {0, 0, 0, 0}};
@@ -67,11 +59,21 @@ int main(int argc, char **argv) {
       switch (option_index) {
       case 0:
         port = atoi(optarg);
-        // TODO: your code here
+
+        if (port < 1 || port > 65535) {
+          fprintf(stderr, "Port must be between 1 and 65535\n");
+          return 1;
+        }
+
         break;
       case 1:
         tnum = atoi(optarg);
-        // TODO: your code here
+        
+        if (tnum <= 0) {
+          fprintf(stderr, "Thread count must be positive\n");
+          return 1;
+        }
+        
         break;
       default:
         printf("Index %d is out of options\n", option_index);
@@ -130,18 +132,20 @@ int main(int argc, char **argv) {
     }
 
     while (true) {
-      unsigned int buffer_size = sizeof(uint64_t) * 3;
-      char from_client[buffer_size];
-      int read = recv(client_fd, from_client, buffer_size, 0);
+      char from_client[sizeof(uint64_t) * 3];
+      size_t received = 0;
 
-      if (!read)
-        break;
-      if (read < 0) {
-        fprintf(stderr, "Client read failed\n");
-        break;
+      while(received < sizeof(from_client)) {
+        ssize_t count = recv(client_fd, from_client + received, sizeof(from_client) - received, 0);
+
+        if (count <= 0) {
+          break;
+        }
+
+        received += count;
       }
-      if (read < buffer_size) {
-        fprintf(stderr, "Client send wrong data format\n");
+
+      if (received != sizeof(from_client)) {
         break;
       }
 
@@ -154,14 +158,45 @@ int main(int argc, char **argv) {
       memcpy(&end, from_client + sizeof(uint64_t), sizeof(uint64_t));
       memcpy(&mod, from_client + 2 * sizeof(uint64_t), sizeof(uint64_t));
 
+      if (mod == 0) {
+        fprintf(stderr, "Modulo must be positive\n");
+        break;
+      }
+
       fprintf(stdout, "Receive: %llu %llu %llu\n", begin, end, mod);
 
       struct FactorialArgs args[tnum];
-      for (uint32_t i = 0; i < tnum; i++) {
-        // TODO: parallel somehow
+      for (int i = 0; i < tnum; i++) {
+        uint64_t count = 0;
+
+        if (begin <= end) {
+          count = end - begin + 1;
+        }
+
+        uint64_t part = count / tnum;
+        uint64_t remainder = count % tnum;
+        uint64_t offset = i * part;
+
+        if ((uint64_t)i < remainder) {
+          offset += i;
+        } else {
+          offset += remainder;
+        }
+
+        uint64_t size = part;
+
+        if ((uint64_t)i < remainder) {
+          size++;
+        }
+
         args[i].begin = 1;
-        args[i].end = 1;
+        args[i].end = 0;
         args[i].mod = mod;
+
+        if (size > 0) {
+          args[i].begin = begin + offset;
+          args[i].end = args[i].begin + size - 1;
+        }
 
         if (pthread_create(&threads[i], NULL, ThreadFactorial,
                            (void *)&args[i])) {
@@ -170,19 +205,31 @@ int main(int argc, char **argv) {
         }
       }
 
-      uint64_t total = 1;
-      for (uint32_t i = 0; i < tnum; i++) {
-        uint64_t result = 0;
-        pthread_join(threads[i], (void **)&result);
-        total = MultModulo(total, result, mod);
+      uint64_t total = 1 % mod;
+      for (int i = 0; i < tnum; i++) {
+        if (pthread_join(threads[i], NULL) != 0) {
+          fprintf(stderr, "Error: pthread_join failed!\n");
+          return 1;
+        }
+
+        total = MultModulo(total, args[i].result, mod);
       }
 
       printf("Total: %llu\n", total);
 
-      char buffer[sizeof(total)];
-      memcpy(buffer, &total, sizeof(total));
-      err = send(client_fd, buffer, sizeof(total), 0);
-      if (err < 0) {
+      size_t sent = 0;
+
+      while (sent < sizeof(total)) {
+        ssize_t count = send(client_fd, (char *)&total + sent, sizeof(total) - sent, 0);
+
+        if (count <= 0) {
+          break;
+        }
+
+        sent += count;
+      }
+
+      if (sent != sizeof(total)) {
         fprintf(stderr, "Can't send data to client\n");
         break;
       }

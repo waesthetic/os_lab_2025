@@ -19,3 +19,7 @@ lab5/src/mutex_without
 lab5/src/mutex_with
 lab5/src/factorial
 lab5/src/deadlock
+lab6/src/client
+lab6/src/server
+lab6/src/*.o
+lab6/src/*.a
